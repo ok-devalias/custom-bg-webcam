@@ -1,3 +1,4 @@
+import camera
 import cv2
 import numpy as np
 import pyvirtualcam
@@ -14,39 +15,43 @@ bodypix_model = load_model(download_model(
     BodyPixModelPaths.MOBILENET_FLOAT_75_STRIDE_16
 ))
 
+
 def get_mask(frame):
     result = bodypix_model.predict_single(np.array(frame))
     mask = np.array(result.get_mask(threshold=0.75, dtype=np.uint8))
     mask = mask.reshape((frame.shape[0], frame.shape[1]))
     return mask
 
-def loop_to_cam():
-    path = Path(Path.cwd() / BG_IMG)
-    height, width = 1080, 1920
-    fps = 60
+
+def process_image(height, width, fps, image_filename=BG_IMG):
+    path = Path(Path.cwd() / image_filename)
     img = Image.open(path)
     seq = ImageSequence.Iterator(img)
     resized_seq = [frame.resize((width, height)) for frame in seq]
     mirrored_seq = [ImageOps.mirror(frame) for frame in resized_seq]
+    return mirrored_seq
 
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-    cap.set(cv2.CAP_PROP_FPS, fps)
+def activate_cam(height, width, fps, device=0, api=cv2.CAP_DSHOW):
+    return camera.Camera(height, width, fps, device, api)
 
-    with pyvirtualcam.Camera(width, height, fps, fmt=PixelFormat.RGBA, device=CAM_DEVICE) as cam:
+
+def rgb_to_rgba(frame, height, width):
+    return np.dstack(
+        (frame, np.zeros((height, width), dtype=np.uint8)+255))
+
+
+def loop_to_cam(image_sequence, webcam):
+    with pyvirtualcam.Camera(webcam.width, webcam.height, webcam.fps,
+     fmt=PixelFormat.RGBA, device=CAM_DEVICE) as cam:
         print(f'cam: {cam.device}')
         frame = np.zeros((cam.height, cam.width, 4), np.uint8)
         while True:
             try:
-                for f in mirrored_seq:
-                    _, c_frame = cap.read()
+                for f in image_sequence:
+                    c_frame = webcam.get_frame(toRgb=True)
                     mask = get_mask(c_frame)
                     inverse_mask = 1-mask
-                    c_frame = cv2.cvtColor(c_frame, cv2.COLOR_BGR2RGB)
-                    rgba = np.dstack(
-                        (c_frame, np.zeros((height, width), dtype=np.uint8)+255)
-                    )
+                    rgba = rgb_to_rgba(c_frame, cam.height, cam.width)
                     frame[:] = 0
                     bg_frame = np.array(f)
                     for c in range(frame.shape[2]):
