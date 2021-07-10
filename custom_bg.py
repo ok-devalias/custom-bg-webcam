@@ -45,18 +45,21 @@ def loop_to_cam(image_sequence, webcam):
      fmt=PixelFormat.RGBA, device=CAM_DEVICE) as cam:
         print(f'cam: {cam.device}')
         frame = np.zeros((cam.height, cam.width, 4), np.uint8)
+        count = 0
         while True:
+            if count == len(image_sequence) - 1:
+                count = 0
             try:
-                for f in image_sequence:
-                    c_frame = webcam.get_frame(toRgb=True)
-                    mask = get_mask(c_frame)
-                    inverse_mask = 1-mask
-                    rgba = rgb_to_rgba(c_frame, cam.height, cam.width)
-                    frame[:] = 0
-                    bg_frame = np.array(f)
-                    for c in range(frame.shape[2]):
-                        frame[:,:,c] = rgba[:,:,c]*mask + bg_frame[:,:,c]*inverse_mask
-                    cam.send(frame)
-                    cam.sleep_until_next_frame()
+                c_frame = webcam.get_frame(toRgb=True)
+                mask = get_mask(c_frame)
+                inverse_mask = 1-mask
+                rgba = rgb_to_rgba(c_frame, cam.height, cam.width)
+                frame[:] = 0
+                bg_frame = np.array(image_sequence[count])
+                for c in range(frame.shape[2]):
+                    frame[:,:,c] = rgba[:,:,c]*mask + bg_frame[:,:,c]*inverse_mask
+                cam.send(frame)
+                cam.sleep_until_next_frame()
+                count += 1
             except KeyboardInterrupt:
                 break
